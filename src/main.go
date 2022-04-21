@@ -5,12 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -26,13 +28,40 @@ type FileAttr struct {
 	Data         string
 }
 
-func toJson(listFile []FileAttr, target string) bool {
-	if len(listFile) == 0 {
+func toJson(listFile *[]FileAttr, target string) bool {
+	if len(*listFile) == 0 {
 		log.Fatalf("List files are empty")
 		return false
 	}
+	var f *os.File
+	var err error
 
-	f, err := os.Create(target)
+	if _, err = os.Stat(target); errors.Is(err, os.ErrNotExist) {
+		fmt.Println("file not exists")
+		f, err = os.Create(target)
+	} else if err == nil {
+		fmt.Println("file exists")
+		in := bufio.NewReader(os.Stdin)
+		f, err = os.Open(target)
+		exists := true
+		for exists == true {
+			fmt.Printf("File %s is exists. Rewrite? (Y or N) ", f.Name())
+			response, _, _ := in.ReadLine()
+			cmd := string(response)
+
+			switch strings.Trim(strings.ToUpper(cmd), " ") {
+			case "N":
+				log.Fatalf("File is exists. Processing stopped")
+				return false
+			case "Y":
+				f, err = os.Create(target)
+				exists = false
+			default:
+				continue
+			}
+		}
+	}
+
 	defer f.Close()
 	if err != nil {
 		panic(fmt.Sprintf("Error. File %s not created", *out))
@@ -135,11 +164,10 @@ func main() {
 	}
 
 	if out != nil {
-		_, err := os.Stat(*out)
 
-		if err != nil {
+		if _, err := os.Stat(*out); err == nil {
 			fmt.Println("toJson")
-			toJson(listFile, *out)
+			toJson(&listFile, *out)
 		} else {
 			fmt.Println("extract")
 			extract(*source, *out)
